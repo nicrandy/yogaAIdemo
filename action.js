@@ -59,7 +59,8 @@ function onResults(results) {
     if (workoutStarted) {
         updateYogaPoseCanvases(); // update the yoga pose canvases
         let userAngles = CalculateAllAngles(results.poseLandmarks); // calculate angles for current user pose
-        let targetAngles = allYogaPoseInfo[3].Angles; // calculate angles for current target pose
+        let currentPose = thisWorkoutSchedule[currentPoseInThisWorkout - 1]; // get current pose from thisWorkoutSchedule
+        let targetAngles = allYogaPoseInfo[currentPose].Angles; // calculate angles for current target pose
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
         updateScore(angleDifferenceScore, currentLandmarksArray); // update score on score DOM element
     }
@@ -298,7 +299,8 @@ function startWorkout(timePerPose) {
 // update the position and number for score on the score DOM element
 // take in the current score and landmarks array
 function updateScore(score, landmarks) {
-    score = parseInt((score / 2520) * 100); //normailze score to a percentage
+    higherBetterScore = 1500 - score;
+    score = parseInt((higherBetterScore / 1500 ) * 100); //normailze score to a percentage
     document.getElementById('score').innerHTML = score + "%";
     // use below code to draw the score to above the users head
     // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
