@@ -6,10 +6,10 @@ const scoreBoard = document.getElementById("score");
 
 // ---------  START global variables ---------- //
 var allYogaPoseInfo = []; // load from json file of pose info
-var currentLandmarksArray = [];
-var thisWorkoutSchedule = [];
-var totalPosesInThisWorkout = 0;
-var currentPoseInThisWorkout = 0;
+var currentLandmarksArray = []; // live update of output landmarks
+var thisWorkoutSchedule = []; // array of poses related to images in example_poses
+var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
+var currentPoseInThisWorkout = 1; // start with pose 1
 var workoutStarted = false; // draw selection circles if workout not started yet
 
 
@@ -47,7 +47,7 @@ function onResults(results) {
     // ------ all of the actions to perform when there are results
     currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks);
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
-    // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
 
     drawLandmarkLines(currentLandmarksArray); // draw landmarks on canvas
     drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
@@ -249,7 +249,7 @@ function drawSelectionCircles(landmarks) {
     if (leftDistance <= circleDiameter && rightDistance <= circleDiameter) {
         thisWorkoutSchedule = setYogaRoutine(6);
         workoutStarted = true;
-        createTimer(10);
+        startWorkout(10); // start workout (timerPerPose)
     }
 }
 
@@ -264,20 +264,45 @@ function drawYogaImageOnCanvas(poseCanvasID, poseNumber) {
     };
     img.src = allYogaPoseInfo[poseNumber].RelativeLocation;
 }
-
+// update the pose canvases and pose counter
 function updateYogaPoseCanvases() {
-    let posesRemaining = totalPosesInThisWorkout - currentPoseInThisWorkout;
-    drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout]);
-    drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout + 1]);
-    drawYogaImageOnCanvas("poseCanvas3", thisWorkoutSchedule[currentPoseInThisWorkout + 2]);
+    document.getElementById("poseCount").innerHTML = "Pose: " + currentPoseInThisWorkout + " of "+ totalPosesInThisWorkout; //update pose count
+    if (currentPoseInThisWorkout < totalPosesInThisWorkout - 1) {
+    drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+    drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout ]);
+    drawYogaImageOnCanvas("poseCanvas3", thisWorkoutSchedule[currentPoseInThisWorkout + 1]);
+    }
+    else if (currentPoseInThisWorkout < totalPosesInThisWorkout) {
+        drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+        drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout]);
+        document.getElementById("poseCanvas3").style.visibility = "hidden";
+    }
+    else {
+        drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+        document.getElementById("poseCanvas2").style.visibility = "hidden";
+        document.getElementById("poseCanvas3").style.visibility = "hidden";
+    }
 }
+// actions to perform once the workout is started
+function startWorkout(timePerPose) {
+    document.getElementById("poseCanvas1").style.visibility = "visible";
+    document.getElementById("poseCanvas2").style.visibility = "visible";
+    document.getElementById("poseCanvas3").style.visibility = "visible";
+    document.getElementById("poseCount").style.visibility = "visible";
+    document.getElementById("score").style.visibility = "visible";
+    document.getElementById("timer").style.visibility = "visible";
+    createTimer(timePerPose);
+}
+
 
 // update the position and number for score on the score DOM element
 // take in the current score and landmarks array
 function updateScore(score, landmarks) {
-    document.getElementById('score').innerHTML = score;
-    scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
-    scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
+    score = parseInt((score / 2520) * 100); //normailze score to a percentage
+    document.getElementById('score').innerHTML = score + "%";
+    // use below code to draw the score to above the users head
+    // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
+    // scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
 }
 
 /// ---- This section calculates the angles of joints ---- ////
@@ -360,13 +385,21 @@ function CalculateAngleDifferences(userAngles, targetAngles, poseHandicap) {
 
 // create a timer for time amount of seconds
 function createTimer(time) {
+    let startTime = time;
     let timer = setInterval(function () {
         console.log("time",time);
+        document.getElementById("timer").innerHTML = time;
         time--;
         if (time <= 0) {
-            clearInterval(timer);
-            currentPoseInThisWorkout++; // increment to next pose
-            updateYogaPoseCanvases();
+            if (currentPoseInThisWorkout == totalPosesInThisWorkout) {
+                clearInterval(timer);
+                console.log("workout complete");
+            }
+            else {
+                time = startTime;
+                currentPoseInThisWorkout++; // increment to next pose
+                updateYogaPoseCanvases();
+            }
             return;
         }
         document.getElementById('timer').innerHTML = time;
