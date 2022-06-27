@@ -1,16 +1,26 @@
 const videoElement = document.getElementsByClassName('input_video')[0];
 const canvasElement = document.getElementsByClassName('output_canvas')[0];
 const canvasCtx = canvasElement.getContext('2d');
+const nonReversedCanvasElement = document.getElementsByClassName('nonReversed_output_canvas')[0];
+const nonReversedCanvasCtx = nonReversedCanvasElement.getContext('2d');
 const timer = document.getElementById("timer");
 const scoreBoard = document.getElementById("score");
 
 // ---------  START global variables ---------- //
 var allYogaPoseInfo = []; // load from json file of pose info
-var currentLandmarksArray = [];
-var thisWorkoutSchedule = [];
-var totalPosesInThisWorkout = 0;
-var currentPoseInThisWorkout = 0;
+var currentLandmarksArray = []; // live update of output landmarks
+var thisWorkoutSchedule = []; // array of poses related to images in example_poses
+var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
+var currentPoseInThisWorkout = 1; // start with pose 1
 var workoutStarted = false; // draw selection circles if workout not started yet
+// track progress through the selection menu, eg. choose workout, timing etc. stage
+// 0 = initial instructions
+// 1 = choose workout
+// 2 = choose timing
+// 3 = choose number of poses to do pose
+var menuTracker = 0;
+
+
 
 
 // ---------  END global variables ---------- //
@@ -47,28 +57,29 @@ function onResults(results) {
     // ------ all of the actions to perform when there are results
     currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks);
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
-    // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
 
     drawLandmarkLines(currentLandmarksArray); // draw landmarks on canvas
     drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
     // actions to prerform before starting workout
     if (!workoutStarted) {
-        drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
+        if (menuTracker == 0) {
+            drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
+        }
+        else {
+            drawSelectionMenu(currentLandmarksArray); // draw selection menu
+        }
     }
     // actions to perform during workout
     if (workoutStarted) {
         updateYogaPoseCanvases(); // update the yoga pose canvases
         let userAngles = CalculateAllAngles(results.poseLandmarks); // calculate angles for current user pose
-        let targetAngles = allYogaPoseInfo[3].Angles; // calculate angles for current target pose
+        let currentPose = thisWorkoutSchedule[currentPoseInThisWorkout - 1]; // get current pose from thisWorkoutSchedule
+        let targetAngles = allYogaPoseInfo[currentPose].Angles; // calculate angles for current target pose
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
-        updateScore(angleDifferenceScore, currentLandmarksArray); // update score on score DOM element
+        updateScore(angleDifferenceScore); // update score on score DOM element
     }
-
-
-
-
     // ------ end of actions to preform when there are results
-
 }
 
 const pose = new Pose({
@@ -107,14 +118,24 @@ function convertLandmarkObjectToArray(landmarks) {
 
 // set the yoga rotine
 // input the number of poses to do for that workout
-function setYogaRoutine(poseTotal) {
+function setYogaRoutine(workout, poseTotal) {
     totalPosesInThisWorkout = poseTotal;
     let onlyStandingRotine = [8, 18, 21, 22, 31, 36, 39, 60, 68, 74, 75, 76]
     let easyOnTheGround = [1, 3, 7, 9, 10, 12, 15, 16, 17, 20, 29, 30, 33, 34, 37, 38, 44, 48, 52, 56, 57, 59, 65, 67, 71, 73, 80]
     let easyStretch = [3, 5, 9, 10, 17, 21, 29, 34, 40, 45, 48, 49, 52, 72, 76]
     // select amount from each array
-    let selectedArray = onlyStandingRotine
-    let amount = poseTotal
+    let selectedArray = [];
+    if (workout == 1) {
+        selectedArray = onlyStandingRotine;
+    }
+    else if (workout == 2) {
+        selectedArray = easyOnTheGround;
+    }
+    else if (workout == 3) {
+        selectedArray = easyStretch;
+    }
+
+    let amount = poseTotal;
     let thisWorkout = selectedArray.sort(() => Math.random() - 0.5).slice(0, amount);
     console.log("this workout schedule: ", thisWorkout)
     return thisWorkout;
@@ -128,9 +149,10 @@ function drawLandmarkCircles(landmarks) {
         const y = landmark[1] * canvasElement.height;
         let circleDiameter = 10;
         if (i < 11) {
+            // change circleDiameter to draw facial landmarks
             canvasCtx.fillStyle = 'lightblue';
             canvasCtx.strokeStyle = 'blue';
-            circleDiameter = 10;
+            circleDiameter = 0;
         }
         else if (i % 2 == 0) {
             canvasCtx.fillStyle = 'orange';
@@ -196,6 +218,7 @@ function drawLandmarkLines(landmarks) {
 
 // draw selection circles next to ears
 function drawSelectionCircles(landmarks) {
+    updateInstructions("Put hands in circles to begin");
     let circleDiameter = 50; // put at start of function so can compare distances
     let leftX = parseInt((landmarks[11].x) * canvasElement.width); //left shoulder
     let leftY = parseInt((landmarks[7].y) * canvasElement.height); //left eye
@@ -247,9 +270,263 @@ function drawSelectionCircles(landmarks) {
     }
     // action to preform if hands are in selection circles
     if (leftDistance <= circleDiameter && rightDistance <= circleDiameter) {
-        thisWorkoutSchedule = setYogaRoutine(6);
-        workoutStarted = true;
-        createTimer(10);
+        menuTracker += 1;
+        // thisWorkoutSchedule = setYogaRoutine(6);
+        // workoutStarted = true;
+        // startWorkout(10); // start workout (timerPerPose)
+        document.getElementById("instructions").style.visibility = "hidden";
+    }
+}
+
+// draw the selection menu
+// menu choices are on right side and confirmation is on left side
+var workoutSelected = ''; // when menuTracker is 1
+var numberOfPoses = 0; // when menuTracker is 2
+var timePerPose = 0; // when menuTracker is 3
+
+var canSelectMenu = true;
+
+function drawSelectionMenu(landmarks) {
+    // text for instructions
+    document.getElementById("menu").innerHTML = "Left hand to confirm and right hand to select options";
+    let circleDiameter = 50; // put at start of function so can compare distances
+    // where to draw circles
+    // confirm selection circle 
+    let leftX = parseInt((landmarks[11][0]) * canvasElement.width); //left shoulder
+    let leftY = parseInt((landmarks[7][1]) * canvasElement.height); //left eye
+    // choice circle 1
+    let rightX1 = parseInt((landmarks[12][0]) * canvasElement.width * .85); //right shoulder
+    let rightY1 = parseInt((landmarks[12][1]) * canvasElement.height); //right shoulder
+    // choice circle 2
+    let rightX2 = parseInt((landmarks[12][0]) * canvasElement.width * .8); //right shoulder
+
+    let rightY2 = parseInt((((landmarks[24][1] - landmarks[12][1]) / 2) + landmarks[12][1]) * canvasElement.height); //between shoulder and hip
+    // choice circle 3
+    let rightX3 = parseInt((landmarks[12][0]) * canvasElement.width * .85); //right shoulder
+    let rightY3 = parseInt((landmarks[24][1]) * canvasElement.height); //right hip
+    // get the position of the hands
+    let leftHandX = parseInt((landmarks[19][0]) * canvasElement.width); //left hand
+    let leftHandY = parseInt((landmarks[19][1]) * canvasElement.height); //left hand
+    let rightHandX = parseInt((landmarks[20][0]) * canvasElement.width); //right hand
+    let rightHandY = parseInt((landmarks[20][1]) * canvasElement.height); //right hand
+    // calculate the distance between the position of the hand and the selection circle
+    let leftDistance = Math.sqrt(Math.pow(leftX - leftHandX, 2) + Math.pow(leftY - leftHandY, 2));
+    let rightDistance1 = Math.sqrt(Math.pow(rightX1 - rightHandX, 2) + Math.pow(rightY1 - rightHandY, 2));
+    let rightDistance2 = Math.sqrt(Math.pow(rightX2 - rightHandX, 2) + Math.pow(rightY2 - rightHandY, 2));
+    let rightDistance3 = Math.sqrt(Math.pow(rightX3 - rightHandX, 2) + Math.pow(rightY3 - rightHandY, 2));
+    canvasCtx.linewidth = 10;
+    // draw confrimation circle
+    if (leftDistance >= circleDiameter) {
+        canvasCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
+        canvasCtx.strokeStyle = 'pink';
+        canvasCtx.beginPath();
+        canvasCtx.arc(leftX, leftY, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+
+    }
+    else {
+        canvasCtx.fillStyle = "rgba(0, 255, 0, 0.5)";
+        canvasCtx.strokeStyle = 'lightgreen';
+        canvasCtx.beginPath();
+        canvasCtx.arc(leftX, leftY, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+    }
+
+
+    circleDiameter = 30;
+    // draw choice circle 1
+    if (rightDistance1 >= circleDiameter) {
+        canvasCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
+        canvasCtx.strokeStyle = 'pink';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX1, rightY1, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+    }
+    else {
+        canvasCtx.fillStyle = "rgba(0, 255, 0, 0.5)";
+        canvasCtx.strokeStyle = 'lightgreen';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX1, rightY1, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+    }
+
+    // draw choice circle 2
+    if (rightDistance2 >= circleDiameter) {
+        canvasCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
+        canvasCtx.strokeStyle = 'pink';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX2, rightY2, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+
+    }
+    else {
+        canvasCtx.fillStyle = "rgba(0, 255, 0, 0.5)";
+        canvasCtx.strokeStyle = 'lightgreen';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX2, rightY2, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+    }
+    // draw choice circle 3
+    if (rightDistance3 >= circleDiameter) {
+        canvasCtx.fillStyle = "rgba(255, 0, 0, 0.5)";
+        canvasCtx.strokeStyle = 'pink';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX3, rightY3, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+
+    }
+    else {
+        canvasCtx.fillStyle = "rgba(0, 255, 0, 0.5)";
+        canvasCtx.strokeStyle = 'lightgreen';
+        canvasCtx.beginPath();
+        canvasCtx.arc(rightX3, rightY3, circleDiameter, 0, 2 * Math.PI);
+        canvasCtx.closePath();
+        canvasCtx.fill();
+        canvasCtx.stroke();
+    }
+    nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
+
+    // draw "Confirm" text
+    confirmX = (canvasElement.width - leftX - 90);
+    confirmY = (leftY - 60);
+    confirmText = "Confirm";
+    nonReversedCanvasCtx.font = '60px Sans-serif';
+    nonReversedCanvasCtx.strokeStyle = 'black';
+    nonReversedCanvasCtx.lineWidth = 4;
+    nonReversedCanvasCtx.strokeText(confirmText, confirmX, confirmY);
+    nonReversedCanvasCtx.fillStyle = 'lightgreen';
+    nonReversedCanvasCtx.fillText(confirmText, confirmX, confirmY);
+
+    // set the text for menu choices
+    let options = []
+    let title = "Select your choice"
+    if (menuTracker == 1) {
+        options = ['Off the ground', 'On the ground', 'Morning stretch']
+        title = "Select your workout type"
+    }
+    else if (menuTracker == 2) {
+        options = [5, 10, 15]
+        title = "How many total poses?"
+    }
+    else if (menuTracker == 3) {
+        options = [10, 20, 30]
+        title = "Seconds per pose?"
+    }
+    positions = [[rightX1, rightY1], [rightX2, rightY2], [rightX3, rightY3]];
+    i = 0
+    while (i < 3) {
+        // draw title
+        rightXInverse = (canvasElement.width - positions[0][0]) - 50;
+        adjustY = positions[0][1] - 60;
+        nonReversedCanvasCtx.font = '60px Sans-serif';
+        nonReversedCanvasCtx.strokeStyle = 'black';
+        nonReversedCanvasCtx.lineWidth = 4;
+        nonReversedCanvasCtx.strokeText(title, rightXInverse, adjustY);
+        nonReversedCanvasCtx.fillStyle = 'lightgreen';
+        nonReversedCanvasCtx.fillText(title, rightXInverse, adjustY);
+        // draw menu choices
+        rightXInverse = (canvasElement.width - positions[i][0]) + 40;
+        adjustY = positions[i][1] + 20;
+        nonReversedCanvasCtx.font = '50px Sans-serif';
+        nonReversedCanvasCtx.strokeStyle = 'black';
+        nonReversedCanvasCtx.lineWidth = 4;
+        nonReversedCanvasCtx.strokeText(options[i], rightXInverse, adjustY);
+        nonReversedCanvasCtx.fillStyle = 'lightgreen';
+        nonReversedCanvasCtx.fillText(options[i], rightXInverse, adjustY);
+        i++;
+    }
+
+    // action to preform if hands are in selection circles
+    if (canSelectMenu) {
+        if (leftDistance <= circleDiameter && rightDistance1 <= circleDiameter) {
+            // return choice one
+            console.log("choice one");
+            setOptions(options[0]);
+            canSelectMenu = false;
+        }
+        else if (leftDistance <= circleDiameter && rightDistance2 <= circleDiameter) {
+            // return choice two
+            console.log("choice two");
+            setOptions(options[1]);
+            canSelectMenu = false;
+
+        }
+        else if (leftDistance <= circleDiameter && rightDistance3 <= circleDiameter) {
+            // return choice three
+            console.log("choice three");
+            setOptions(options[2]);
+            canSelectMenu = false;
+
+        }
+    }
+    // allow to select menu again after hands are out of selection circles
+    if (leftDistance > circleDiameter && rightDistance1 > circleDiameter && rightDistance2 > circleDiameter && rightDistance3 > circleDiameter) {
+        canSelectMenu = true;
+    }
+    // set given options depending on the menu tracker state
+    function setOptions(options) {
+        if (menuTracker == 1) {
+            if (options == 'Off the ground') {
+                workoutSelected = 1;
+            }
+            else if (options == 'On the ground') {
+                workoutSelected = 2;
+            }
+            else if (options == 'Morning stretch') {
+                workoutSelected = 3;
+            }
+        }
+        else if (menuTracker == 2) {
+            if (options == 5) {
+                numberOfPoses = 5;
+            }
+            else if (options == 10) {
+                numberOfPoses = 10;
+            }
+            else if (options == 15) {
+                numberOfPoses = 15;
+            }
+        }
+        else if (menuTracker == 3) {
+            if (options == 10) {
+                timePerPose = 10;
+            }
+            else if (options == 20) {
+                timePerPose = 20;
+            }
+            else if (options == 30) {
+                timePerPose = 30;
+            }
+        }
+        menuTracker++;
+        console.log("workout type: " + workoutSelected + " total poses: " + numberOfPoses + " seconds per pose: " + timePerPose);
+        // exit menu selectoin after completion of all menu choices
+        if (menuTracker > 3) {
+            thisWorkoutSchedule = setYogaRoutine(workoutSelected, numberOfPoses);
+
+            startWorkout(timePerPose); // start workout (timerPerPose)
+            workoutStarted = true;
+            // clear this canvas and hide instructions
+            nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
+            document.getElementById("instructions").style.visibility = "hidden";
+            document.getElementById("menu").style.visibility = "hidden";
+
+        }
+
     }
 }
 
@@ -264,20 +541,73 @@ function drawYogaImageOnCanvas(poseCanvasID, poseNumber) {
     };
     img.src = allYogaPoseInfo[poseNumber].RelativeLocation;
 }
-
+// update the pose canvases and pose counter
 function updateYogaPoseCanvases() {
-    let posesRemaining = totalPosesInThisWorkout - currentPoseInThisWorkout;
-    drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout]);
-    drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout + 1]);
-    drawYogaImageOnCanvas("poseCanvas3", thisWorkoutSchedule[currentPoseInThisWorkout + 2]);
+    document.getElementById("poseCount").innerHTML = "Pose: " + currentPoseInThisWorkout + " of " + totalPosesInThisWorkout; //update pose count
+    if (currentPoseInThisWorkout < totalPosesInThisWorkout - 1) {
+        drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+        drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout]);
+        drawYogaImageOnCanvas("poseCanvas3", thisWorkoutSchedule[currentPoseInThisWorkout + 1]);
+    }
+    else if (currentPoseInThisWorkout < totalPosesInThisWorkout) {
+        drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+        drawYogaImageOnCanvas("poseCanvas2", thisWorkoutSchedule[currentPoseInThisWorkout]);
+        document.getElementById("poseCanvas3").style.visibility = "hidden";
+    }
+    else {
+        drawYogaImageOnCanvas("poseCanvas1", thisWorkoutSchedule[currentPoseInThisWorkout - 1]);
+        document.getElementById("poseCanvas2").style.visibility = "hidden";
+        document.getElementById("poseCanvas3").style.visibility = "hidden";
+    }
 }
+// actions to perform once the workout is started
+function startWorkout(timePerPose) {
+    document.getElementById("poseCanvas1").style.visibility = "visible";
+    document.getElementById("poseCanvas2").style.visibility = "visible";
+    document.getElementById("poseCanvas3").style.visibility = "visible";
+    document.getElementById("poseCount").style.visibility = "visible";
+    document.getElementById("score").style.visibility = "visible";
+    document.getElementById("timer").style.visibility = "visible";
+    createTimer(timePerPose);
+}
+
 
 // update the position and number for score on the score DOM element
 // take in the current score and landmarks array
-function updateScore(score, landmarks) {
-    document.getElementById('score').innerHTML = score;
-    scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
-    scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
+function updateScore(score) {
+    nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas for score arc
+
+    higherBetterScore = 1500 - score;
+    score = parseInt((higherBetterScore / 1500) * 100); //normailze score to a percentage
+    document.getElementById('score').innerHTML = score + "%";
+    // use below code to draw an arc on the nonreversed canvas
+    let startPosition = (1 * Math.PI);
+    let endPosition = (startPosition + ((score / 100) * (Math.PI)));
+    // console.log("start position: " + startPosition + " end position: " + endPosition);
+    // fixed position
+        // let xPosition = (canvasElement.width / 2) + 30;
+        // let yPosition = canvasElement.height * 0.15;
+    // moving position
+    let xPosition = parseInt((1- currentLandmarksArray[0][0]) * canvasElement.width);
+    let yPosition = parseInt(currentLandmarksArray[0][1] * canvasElement.height - 50);
+    
+    nonReversedCanvasCtx.beginPath();
+    nonReversedCanvasCtx.arc(xPosition, yPosition, 100, startPosition, endPosition);
+    nonReversedCanvasCtx.lineWidth = 15;
+    nonReversedCanvasCtx.strokeStyle = "lightgreen";
+    nonReversedCanvasCtx.stroke();
+
+    // use below code to draw the score to above the users head
+        // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
+        // scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
+
+
+}
+
+function updateInstructions(instruction) {
+    document.getElementById('instructions').innerHTML = instruction;
+    document.getElementById('instructions').style.top = (currentLandmarksArray[0][1] * 20) + '%';
+    document.getElementById('instructions').style.left = ((1 - currentLandmarksArray[0][0]) * 35) + '%';
 }
 
 /// ---- This section calculates the angles of joints ---- ////
@@ -360,13 +690,21 @@ function CalculateAngleDifferences(userAngles, targetAngles, poseHandicap) {
 
 // create a timer for time amount of seconds
 function createTimer(time) {
+    let startTime = time;
     let timer = setInterval(function () {
-        console.log("time",time);
+        console.log("time", time);
+        document.getElementById("timer").innerHTML = time;
         time--;
         if (time <= 0) {
-            clearInterval(timer);
-            currentPoseInThisWorkout++; // increment to next pose
-            updateYogaPoseCanvases();
+            if (currentPoseInThisWorkout == totalPosesInThisWorkout) {
+                clearInterval(timer);
+                console.log("workout complete");
+            }
+            else {
+                time = startTime;
+                currentPoseInThisWorkout++; // increment to next pose
+                updateYogaPoseCanvases();
+            }
             return;
         }
         document.getElementById('timer').innerHTML = time;
