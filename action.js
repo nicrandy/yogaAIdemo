@@ -1,18 +1,24 @@
+
+
 const videoElement = document.getElementsByClassName('input_video')[0];
 const canvasElement = document.getElementsByClassName('output_canvas')[0];
 const canvasCtx = canvasElement.getContext('2d');
 const nonReversedCanvasElement = document.getElementsByClassName('nonReversed_output_canvas')[0];
 const nonReversedCanvasCtx = nonReversedCanvasElement.getContext('2d');
+const targetPoseCanvasElement = document.getElementsByClassName('target_pose_canvas')[0];
+const targetPoseCanvasCtx = targetPoseCanvasElement.getContext('2d');
 const timer = document.getElementById("timer");
 const scoreBoard = document.getElementById("score");
 
 // ---------  START global variables ---------- //
 var allYogaPoseInfo = []; // load from json file of pose info
 var currentLandmarksArray = []; // live update of output landmarks
+var currentScore = 0; // live update of current score
 var thisWorkoutSchedule = []; // array of poses related to images in example_poses
 var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
 var currentPoseInThisWorkout = 1; // start with pose 1
 var workoutStarted = false; // draw selection circles if workout not started yet
+var saveDataToArray = true; // set to true to save workout data to array
 // track progress through the selection menu, eg. choose workout, timing etc. stage
 // 0 = initial instructions
 // 1 = choose workout
@@ -29,7 +35,7 @@ var menuTracker = 0;
 function loadJSON(callback) {
     var xobj = new XMLHttpRequest();
     xobj.overrideMimeType("application/json");
-    xobj.open('GET', 'poseInfo.json', true);
+    xobj.open('GET', 'poseInfo2.json', true);
     xobj.onreadystatechange = function () {
         if (xobj.readyState == 4 && xobj.status == "200") {
             // .open will NOT return a value but simply returns undefined in async mode so use a callback
@@ -78,6 +84,11 @@ function onResults(results) {
         let targetAngles = allYogaPoseInfo[currentPose].Angles; // calculate angles for current target pose
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
         updateScore(angleDifferenceScore); // update score on score DOM element
+        drawTargetPoseLandmarkLines(); // draw target pose landmarks on canvas
+        if (saveDataToArray) {
+            setInterval(dataToSave, 100);
+            saveDataToArray = false;
+        }
     }
     // ------ end of actions to preform when there are results
 }
@@ -117,7 +128,7 @@ function convertLandmarkObjectToArray(landmarks) {
 }
 
 // set the yoga rotine
-// input the number of poses to do for that workout
+// input the workout and number of poses to do for that workout
 function setYogaRoutine(workout, poseTotal) {
     totalPosesInThisWorkout = poseTotal;
     let onlyStandingRotine = [8, 18, 21, 22, 31, 36, 39, 60, 68, 74, 75, 76]
@@ -214,6 +225,68 @@ function drawLandmarkLines(landmarks) {
         canvasCtx.stroke();
     });
 }
+
+function drawTargetPoseLandmarkLines() {
+    // connections to draw based on Blazepose model card
+
+    let currentPoseNumber = thisWorkoutSchedule[currentPoseInThisWorkout - 1];
+    let landmarks = allYogaPoseInfo[currentPoseNumber].Landmarks;
+    // console.log("current pose number: ", currentPoseNumber, "This workout sched", thisWorkoutSchedule, "current pose in this workout: ", currentPoseInThisWorkout);
+
+    targetPoseCanvasCtx.clearRect(0, 0, targetPoseCanvasElement.width, targetPoseCanvasElement.height);
+    // draw large circle for head
+    headX = Math.round(landmarks[0][0] * targetPoseCanvasElement.width);
+    headY = Math.round(landmarks[0][1] * targetPoseCanvasElement.height);
+    targetPoseCanvasCtx.fillStyle = 'lightgreen';
+    targetPoseCanvasCtx.strokeStyle = 'green';
+    circleDiameter = 40;
+    targetPoseCanvasCtx.linewidth = 10;
+    targetPoseCanvasCtx.beginPath();
+    targetPoseCanvasCtx.arc(headX, headY, circleDiameter, 0, 2 * Math.PI);
+    targetPoseCanvasCtx.closePath();
+    targetPoseCanvasCtx.fill();
+    targetPoseCanvasCtx.stroke();
+
+    let connections = [[11, 13], [13, 15], [15, 19], [12, 14], [14, 16], [16, 20], [12, 11], [12, 24], [11, 23], [23, 24], [23, 25], [24, 26], [26, 28], [25, 27], [27, 31], [28, 32]];
+    connections.forEach(function (item, index) {
+        let xStart = Math.round(landmarks[item[0]][0] * canvasElement.width);
+        let yStart = Math.round(landmarks[item[0]][1] * canvasElement.height);
+        let yFinish = Math.round(landmarks[item[1]][1] * canvasElement.height);
+        let xFinish = Math.round(landmarks[item[1]][0] * canvasElement.width);
+        targetPoseCanvasCtx.beginPath();
+        targetPoseCanvasCtx.moveTo(xStart, yStart);
+        if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
+            targetPoseCanvasCtx.strokeStyle = 'blue';
+        }
+        else if (item[0] % 2 == 0) {
+            targetPoseCanvasCtx.strokeStyle = 'red';
+        }
+        else {
+            targetPoseCanvasCtx.strokeStyle = 'green';
+        }
+        targetPoseCanvasCtx.lineWidth = 10;
+        targetPoseCanvasCtx.lineCap = 'round';
+        targetPoseCanvasCtx.lineTo(xFinish, yFinish);
+        targetPoseCanvasCtx.stroke();
+
+        targetPoseCanvasCtx.beginPath();
+        targetPoseCanvasCtx.moveTo(xStart, yStart);
+        if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
+            targetPoseCanvasCtx.strokeStyle = 'lightblue';
+        }
+        else if (item[0] % 2 == 0) {
+            targetPoseCanvasCtx.strokeStyle = 'orange';
+        }
+        else {
+            targetPoseCanvasCtx.strokeStyle = 'lightgreen'
+        }
+        targetPoseCanvasCtx.lineWidth = 2;
+        targetPoseCanvasCtx.lineCap = 'round';
+        targetPoseCanvasCtx.lineTo(xFinish, yFinish);
+        targetPoseCanvasCtx.stroke();
+    });
+}
+
 
 
 // draw selection circles next to ears
@@ -585,12 +658,12 @@ function updateScore(score) {
     let endPosition = (startPosition + ((score / 100) * (Math.PI)));
     // console.log("start position: " + startPosition + " end position: " + endPosition);
     // fixed position
-        // let xPosition = (canvasElement.width / 2) + 30;
-        // let yPosition = canvasElement.height * 0.15;
+    // let xPosition = (canvasElement.width / 2) + 30;
+    // let yPosition = canvasElement.height * 0.15;
     // moving position
-    let xPosition = parseInt((1- currentLandmarksArray[0][0]) * canvasElement.width);
+    let xPosition = parseInt((1 - currentLandmarksArray[0][0]) * canvasElement.width);
     let yPosition = parseInt(currentLandmarksArray[0][1] * canvasElement.height - 50);
-    
+
     nonReversedCanvasCtx.beginPath();
     nonReversedCanvasCtx.arc(xPosition, yPosition, 100, startPosition, endPosition);
     nonReversedCanvasCtx.lineWidth = 15;
@@ -598,8 +671,8 @@ function updateScore(score) {
     nonReversedCanvasCtx.stroke();
 
     // use below code to draw the score to above the users head
-        // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
-        // scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
+    // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
+    // scoreBoard.style.left = ((1 - landmarks[0][0]) * 85) + '%';
 
 
 }
@@ -692,13 +765,13 @@ function CalculateAngleDifferences(userAngles, targetAngles, poseHandicap) {
 function createTimer(time) {
     let startTime = time;
     let timer = setInterval(function () {
-        console.log("time", time);
         document.getElementById("timer").innerHTML = time;
         time--;
         if (time <= 0) {
             if (currentPoseInThisWorkout == totalPosesInThisWorkout) {
                 clearInterval(timer);
                 console.log("workout complete");
+                writeToJSONFile(); // save workout to json file
             }
             else {
                 time = startTime;
@@ -710,3 +783,20 @@ function createTimer(time) {
         document.getElementById('timer').innerHTML = time;
     }, 1000);
 }
+
+// data to save to JSON file
+var allWorkoutData = [{}];
+function dataToSave() {
+    let currentTime = new Date();
+    let currentPoseNumber = thisWorkoutSchedule[currentPoseInThisWorkout - 1];
+    let currentLandmarks = currentLandmarksArray;
+    let workout = {
+        "date": currentTime,
+        "pose": currentPoseNumber,
+        "score": currentScore,
+        "landmarks": currentLandmarks
+    };
+    allWorkoutData.push(workout);
+    // console.log("all workout data: " + allWorkoutData);
+}
+
