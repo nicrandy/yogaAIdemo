@@ -62,8 +62,23 @@ function onResults(results) {
     }
     // ------ all of the actions to perform when there are results
     currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks);
+
+
+
+
+
+
+
+
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
+
+
+    // for segmentation mask
+    if (results.segmentationMask) {
+        canvasCtx.globalCompositeOperation = 'lighter';
+        canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+    }
 
     drawLandmarkLines(currentLandmarksArray); // draw landmarks on canvas
     drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
@@ -85,6 +100,7 @@ function onResults(results) {
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
         updateScore(angleDifferenceScore); // update score on score DOM element
         drawTargetPoseLandmarkLines(); // draw target pose landmarks on canvas
+        // start saving data to array
         if (saveDataToArray) {
             setInterval(dataToSave, 100);
             saveDataToArray = false;
@@ -226,9 +242,8 @@ function drawLandmarkLines(landmarks) {
     });
 }
 
+// draw the target yoga pose on the canvas
 function drawTargetPoseLandmarkLines() {
-    // connections to draw based on Blazepose model card
-
     let currentPoseNumber = thisWorkoutSchedule[currentPoseInThisWorkout - 1];
     let landmarks = allYogaPoseInfo[currentPoseNumber].Landmarks;
     // console.log("current pose number: ", currentPoseNumber, "This workout sched", thisWorkoutSchedule, "current pose in this workout: ", currentPoseInThisWorkout);
@@ -256,13 +271,13 @@ function drawTargetPoseLandmarkLines() {
         targetPoseCanvasCtx.beginPath();
         targetPoseCanvasCtx.moveTo(xStart, yStart);
         if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
-            targetPoseCanvasCtx.strokeStyle = 'blue';
+            targetPoseCanvasCtx.strokeStyle = 'lightblue';
         }
         else if (item[0] % 2 == 0) {
-            targetPoseCanvasCtx.strokeStyle = 'red';
+            targetPoseCanvasCtx.strokeStyle = 'orange';
         }
         else {
-            targetPoseCanvasCtx.strokeStyle = 'green';
+            targetPoseCanvasCtx.strokeStyle = 'lightgreen';
         }
         targetPoseCanvasCtx.lineWidth = 10;
         targetPoseCanvasCtx.lineCap = 'round';
@@ -272,13 +287,13 @@ function drawTargetPoseLandmarkLines() {
         targetPoseCanvasCtx.beginPath();
         targetPoseCanvasCtx.moveTo(xStart, yStart);
         if (item[0] == 12 && item[1] == 11 || item[0] == 23 && item[1] == 24) {
-            targetPoseCanvasCtx.strokeStyle = 'lightblue';
+            targetPoseCanvasCtx.strokeStyle = 'blue';
         }
         else if (item[0] % 2 == 0) {
-            targetPoseCanvasCtx.strokeStyle = 'orange';
+            targetPoseCanvasCtx.strokeStyle = 'red';
         }
         else {
-            targetPoseCanvasCtx.strokeStyle = 'lightgreen'
+            targetPoseCanvasCtx.strokeStyle = 'green'
         }
         targetPoseCanvasCtx.lineWidth = 2;
         targetPoseCanvasCtx.lineCap = 'round';
@@ -586,11 +601,9 @@ function drawSelectionMenu(landmarks) {
             }
         }
         menuTracker++;
-        console.log("workout type: " + workoutSelected + " total poses: " + numberOfPoses + " seconds per pose: " + timePerPose);
         // exit menu selectoin after completion of all menu choices
         if (menuTracker > 3) {
             thisWorkoutSchedule = setYogaRoutine(workoutSelected, numberOfPoses);
-
             startWorkout(timePerPose); // start workout (timerPerPose)
             workoutStarted = true;
             // clear this canvas and hide instructions
@@ -652,6 +665,7 @@ function updateScore(score) {
 
     higherBetterScore = 1500 - score;
     score = parseInt((higherBetterScore / 1500) * 100); //normailze score to a percentage
+    currentScore = score;
     document.getElementById('score').innerHTML = score + "%";
     // use below code to draw an arc on the nonreversed canvas
     let startPosition = (1 * Math.PI);
@@ -771,7 +785,7 @@ function createTimer(time) {
             if (currentPoseInThisWorkout == totalPosesInThisWorkout) {
                 clearInterval(timer);
                 console.log("workout complete");
-                writeToJSONFile(); // save workout to json file
+                console.log("all workout data", allWorkoutData);
             }
             else {
                 time = startTime;
@@ -788,10 +802,11 @@ function createTimer(time) {
 var allWorkoutData = [{}];
 function dataToSave() {
     let currentTime = new Date();
+    let time = currentTime.getTime();
     let currentPoseNumber = thisWorkoutSchedule[currentPoseInThisWorkout - 1];
     let currentLandmarks = currentLandmarksArray;
     let workout = {
-        "date": currentTime,
+        "date": time,
         "pose": currentPoseNumber,
         "score": currentScore,
         "landmarks": currentLandmarks
