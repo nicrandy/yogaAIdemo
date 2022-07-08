@@ -7,6 +7,8 @@ const nonReversedCanvasElement = document.getElementsByClassName('nonReversed_ou
 const nonReversedCanvasCtx = nonReversedCanvasElement.getContext('2d');
 const targetPoseCanvasElement = document.getElementsByClassName('target_pose_canvas')[0];
 const targetPoseCanvasCtx = targetPoseCanvasElement.getContext('2d');
+const bestPoseCanvasElement = document.getElementsByClassName('best_pose_canvas')[0];
+const bestPoseCanvasCtx = bestPoseCanvasElement.getContext('2d');
 const timer = document.getElementById("timer");
 const scoreBoard = document.getElementById("score");
 
@@ -17,6 +19,7 @@ var currentScore = 0; // live update of current score
 var thisWorkoutSchedule = []; // array of poses related to images in example_poses
 var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
 var currentPoseInThisWorkout = 1; // start with pose 1
+var thisPoseHighScore = 0; // track this pose current high score
 
 ///// set workoutStarted to true to skip the menu
 var workoutStarted = false; // draw selection circles if workout not started yet
@@ -109,6 +112,9 @@ function onResults(results) {
         let currentPose = thisWorkoutSchedule[currentPoseInThisWorkout - 1]; // get current pose from thisWorkoutSchedule
         let targetAngles = allYogaPoseInfo[currentPose].Angles; // calculate angles for current target pose
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
+        if (angleDifferenceScore > thisPoseHighScore) {
+            thisPoseHighScore = angleDifferenceScore; // update this pose high score
+        }
         updateScore(angleDifferenceScore); // update score on score DOM element
         drawTargetPoseLandmarkLines(); // draw target pose landmarks on canvas
         // start saving data to array
@@ -116,6 +122,9 @@ function onResults(results) {
             let dataInterval = setInterval(dataToSave, 100);
             saveDataToArray = false;
         }
+        ///// testing /////
+        saveCameraImage(results.image, angleDifferenceScore);
+        // bestPoseCanvasCtx.drawImage(results.image, 0, 0, 320, 180);
     }
     // ------ end of actions to preform when there are results
 }
@@ -280,7 +289,17 @@ function drawLandmarkLines(landmarks) {
 function drawTargetPoseLandmarkLines() {
     let currentPoseNumber = thisWorkoutSchedule[currentPoseInThisWorkout - 1];
     let landmarks = allYogaPoseInfo[currentPoseNumber].Landmarks;
-    // console.log("current pose number: ", currentPoseNumber, "This workout sched", thisWorkoutSchedule, "current pose in this workout: ", currentPoseInThisWorkout);
+    // normalize the landmarks so Y axis is just above bottom of canvas 
+    let blankBottomAmount = 0.95; // set amount of blank space below the landmarks
+    let currentYmax = 0;
+    for (let i = 0; i < landmarks.length; i++) {
+        if (landmarks[i][1] > currentYmax) {
+            currentYmax = landmarks[i][1];
+        }
+    }
+    let newTopAmount = (25 + parseInt(75 * (blankBottomAmount - currentYmax)))
+    document.getElementsByClassName("target_pose_canvas")[0].style.top = newTopAmount + "%";
+    document.getElementsByClassName("target_pose_canvas")[0].style.height = "75%";
 
     targetPoseCanvasCtx.clearRect(0, 0, targetPoseCanvasElement.width, targetPoseCanvasElement.height);
     // draw large circle for head
@@ -689,6 +708,24 @@ function startWorkout(timePerPose) {
     createTimer(timePerPose);
 }
 
+function saveCameraImage(image, currentScore) {
+    console.log("This pose score: ", currentScore);
+    console.log("High score: ", thisPoseHighScore);
+    // save the camera image to a file
+    if (currentScore >= thisPoseHighScore) {
+        var dataURL = bestPoseCanvasElement.toDataURL('image/png');
+        var link = document.createElement('a');
+        link.href = dataURL;
+        link.download = 'image.png';
+        link.click();
+        bestPoseCanvasCtx.drawImage(image, 0, 0, 320, 180);
+        console.log("image saved");
+    }
+
+}
+//     console.log("image: ", video);
+//     canvasCtx.drawImage(video, 600, 600, canvasCtx.width, canvasCtx.height); // Or at whatever offset you like
+// }
 
 // update the position and number for score on the score DOM element
 // take in the current score and landmarks array
@@ -823,6 +860,7 @@ function createTimer(time) {
                 time = startTime;
                 currentPoseInThisWorkout++; // increment to next pose
                 updateYogaPoseCanvases();
+                thisPoseHighScore = 0; // reset pose high score for tracking high score image
             }
             return;
         }
@@ -842,7 +880,7 @@ function dataToSave() {
         "date": time,
         "pose": currentPoseNumber,
         "score": currentScore,
-        "landmarks": currentLandmarks  
+        "landmarks": currentLandmarks
     };
     allWorkoutData.push(workout);
 }
