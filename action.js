@@ -17,7 +17,11 @@ var currentScore = 0; // live update of current score
 var thisWorkoutSchedule = []; // array of poses related to images in example_poses
 var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
 var currentPoseInThisWorkout = 1; // start with pose 1
+
+///// set workoutStarted to true to skip the menu
 var workoutStarted = false; // draw selection circles if workout not started yet
+//////////////////////////////////////////////////
+
 var saveDataToArray = true; // set to true to save workout data to array
 // track progress through the selection menu, eg. choose workout, timing etc. stage
 // 0 = initial instructions
@@ -25,9 +29,6 @@ var saveDataToArray = true; // set to true to save workout data to array
 // 2 = choose timing
 // 3 = choose number of poses to do pose
 var menuTracker = 0;
-
-
-
 
 // ---------  END global variables ---------- //
 
@@ -61,17 +62,9 @@ function onResults(results) {
         return;
     }
     // ------ all of the actions to perform when there are results
-    currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks);
-
-
-
-
-
-
-
-
+    currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks); // convert landmarks obj to array
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
-    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
+    //canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
 
 
     // for segmentation mask
@@ -84,15 +77,33 @@ function onResults(results) {
     drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
     // actions to prerform before starting workout
     if (!workoutStarted) {
-        if (menuTracker == 0) {
-            drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
-        }
-        else {
-            drawSelectionMenu(currentLandmarksArray); // draw selection menu
-        }
+
+        /////////////// for testing without menu first ///////////////
+        thisWorkoutSchedule = setYogaRoutine(1, 10);
+        startWorkout(10); // start workout (timerPerPose)
+        workoutStarted = true;
+        // clear this canvas and hide instructions
+        nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
+        document.getElementById("instructions").style.visibility = "hidden";
+        document.getElementById("menu").style.visibility = "hidden";
+        ///////////////////////////////////////////////////////////
+
+        /////////////// for testing with menu first uncomment to use selection menu ///////////////
+        // if (menuTracker == 0) {
+        //     drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
+        // }
+        // else {
+        //     drawSelectionMenu(currentLandmarksArray); // draw selection menu
+        // }
+
+
+
     }
     // actions to perform during workout
     if (workoutStarted) {
+
+
+
         updateYogaPoseCanvases(); // update the yoga pose canvases
         let userAngles = CalculateAllAngles(results.poseLandmarks); // calculate angles for current user pose
         let currentPose = thisWorkoutSchedule[currentPoseInThisWorkout - 1]; // get current pose from thisWorkoutSchedule
@@ -102,7 +113,7 @@ function onResults(results) {
         drawTargetPoseLandmarkLines(); // draw target pose landmarks on canvas
         // start saving data to array
         if (saveDataToArray) {
-            setInterval(dataToSave, 100);
+            let dataInterval = setInterval(dataToSave, 100);
             saveDataToArray = false;
         }
     }
@@ -132,6 +143,20 @@ const camera = new Camera(videoElement, {
     height: 720
 });
 camera.start();
+
+// capture still image from camera
+function captureImage() {
+    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+    // save image to file
+    let imageData = canvasCtx.getImageData(0, 0, canvasElement.width, canvasElement.height);
+    let image = new Image();
+    image.src = canvasElement.toDataURL("image/png");
+    image.width = canvasElement.width;
+    image.height = canvasElement.height;
+    let imageName = "image" + currentPoseInThisWorkout + ".png";
+    image.download = imageName;
+    image.click();
+}
 
 // take in landmarks and convert to 2D array [x,y,z,visibility]
 // 32 landmarks with 4 numerical locations each
@@ -175,7 +200,16 @@ function drawLandmarkCircles(landmarks) {
         const x = landmark[0] * canvasElement.width;
         const y = landmark[1] * canvasElement.height;
         let circleDiameter = 10;
-        if (i < 11) {
+        if (i == 0) {
+            canvasCtx.fillStyle = 'lightgreen';
+            canvasCtx.strokeStyle = 'green';
+            // get the distance between points in 2d space
+            let distance = Math.sqrt(Math.pow(landmarks[11][0] - landmarks[12][0], 2) + Math.pow(landmarks[11][1] - landmarks[12][1], 2));
+            distance = parseInt(distance * canvasElement.width / 3.5);
+            console.log("distance: ", distance);
+            circleDiameter = distance;
+        }
+        else if (i < 11) {
             // change circleDiameter to draw facial landmarks
             canvasCtx.fillStyle = 'lightblue';
             canvasCtx.strokeStyle = 'blue';
@@ -610,9 +644,7 @@ function drawSelectionMenu(landmarks) {
             nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
             document.getElementById("instructions").style.visibility = "hidden";
             document.getElementById("menu").style.visibility = "hidden";
-
         }
-
     }
 }
 
@@ -800,6 +832,7 @@ function createTimer(time) {
 
 // data to save to JSON file
 var allWorkoutData = [{}];
+
 function dataToSave() {
     let currentTime = new Date();
     let time = currentTime.getTime();
@@ -809,9 +842,10 @@ function dataToSave() {
         "date": time,
         "pose": currentPoseNumber,
         "score": currentScore,
-        "landmarks": currentLandmarks
+        "landmarks": currentLandmarks  
     };
     allWorkoutData.push(workout);
-    // console.log("all workout data: " + allWorkoutData);
 }
+
+
 
