@@ -20,9 +20,10 @@ var thisWorkoutSchedule = []; // array of poses related to images in example_pos
 var totalPosesInThisWorkout = 0; // set the total number of poses to do for this workout
 var currentPoseInThisWorkout = 1; // start with pose 1
 var thisPoseHighScore = 0; // track this pose current high score
-
+var currentInputImage = null; // save the corrent input image
 ///// set workoutStarted to true to skip the menu
 var workoutStarted = false; // draw selection circles if workout not started yet
+var testing = false; // for testing, skips menu and starts workout
 //////////////////////////////////////////////////
 
 var saveDataToArray = true; // set to true to save workout data to array
@@ -33,7 +34,20 @@ var saveDataToArray = true; // set to true to save workout data to array
 // 3 = choose number of poses to do pose
 var menuTracker = 0;
 
+var displayUserVideoOutput = true; // to display the video output from the camera
+var displayLandmarkLines = true; // to draw the landmarks on the display
+var displayLandmarkCircles = true; // to draw circles on landmark locations
+var fitUserLandmarksToCanvas = true; // fit the user landmarks so they are all displayed on the canvas
+
 // ---------  END global variables ---------- //
+
+// function to get session ID from URL
+function getSessionID() {
+    var url = window.location.href;
+    var sessionID = url.split("=")[1];
+    console.log("sessionID: " + sessionID);
+    return sessionID;
+}
 
 // from json file, includes image file location, name and pose angles
 function loadJSON(callback) {
@@ -61,13 +75,17 @@ loadJSON(function (response) {
 });
 
 function onResults(results) {
+    currentInputImage = results.image;
+
     if (!results.poseLandmarks) {
         return;
     }
     // ------ all of the actions to perform when there are results
     currentLandmarksArray = convertLandmarkObjectToArray(results.poseLandmarks); // convert landmarks obj to array
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
-    //canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
+    if (displayUserVideoOutput) {
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // draw camera input image
+    }
 
 
     // for segmentation mask
@@ -75,46 +93,48 @@ function onResults(results) {
         canvasCtx.globalCompositeOperation = 'lighter';
         canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
     }
+    if (displayLandmarkLines) {
+        drawLandmarkLines(currentLandmarksArray); // draw landmarks on canvas
+        // drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
+    }
 
-    drawLandmarkLines(currentLandmarksArray); // draw landmarks on canvas
-    drawLandmarkCircles(currentLandmarksArray); // draw circles on landmarks on canvas
     // actions to prerform before starting workout
     if (!workoutStarted) {
+        if (testing) {
+            /////////////// for testing without menu first ///////////////
+            thisWorkoutSchedule = setYogaRoutine(1, 10);
+            startWorkout(10); // start workout (timerPerPose)
+            workoutStarted = true;
+            // clear this canvas and hide instructions
+            nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
+            document.getElementById("instructions").style.visibility = "hidden";
+            document.getElementById("menu").style.visibility = "hidden";
+            ///////////////////////////////////////////////////////////
+        }
+        else {
 
-        /////////////// for testing without menu first ///////////////
-        thisWorkoutSchedule = setYogaRoutine(1, 10);
-        startWorkout(10); // start workout (timerPerPose)
-        workoutStarted = true;
-        // clear this canvas and hide instructions
-        nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas
-        document.getElementById("instructions").style.visibility = "hidden";
-        document.getElementById("menu").style.visibility = "hidden";
-        ///////////////////////////////////////////////////////////
 
-        /////////////// for testing with menu first uncomment to use selection menu ///////////////
-        // if (menuTracker == 0) {
-        //     drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
-        // }
-        // else {
-        //     drawSelectionMenu(currentLandmarksArray); // draw selection menu
-        // }
+
+            /////////////// for testing with menu first. uncomment to use selection menu ///////////////
+            if (menuTracker == 0) {
+                drawSelectionCircles(results.poseLandmarks); // draw selection circles until workout starts
+            }
+            else {
+                drawSelectionMenu(currentLandmarksArray); // draw selection menu
+            }
+        }
 
 
 
     }
     // actions to perform during workout
     if (workoutStarted) {
-
-
-
         updateYogaPoseCanvases(); // update the yoga pose canvases
         let userAngles = CalculateAllAngles(results.poseLandmarks); // calculate angles for current user pose
         let currentPose = thisWorkoutSchedule[currentPoseInThisWorkout - 1]; // get current pose from thisWorkoutSchedule
         let targetAngles = allYogaPoseInfo[currentPose].Angles; // calculate angles for current target pose
         let angleDifferenceScore = CalculateAngleDifferences(userAngles, targetAngles, 10); // calculate angle differences
-        if (angleDifferenceScore > thisPoseHighScore) {
-            thisPoseHighScore = angleDifferenceScore; // update this pose high score
-        }
+
         updateScore(angleDifferenceScore); // update score on score DOM element
         drawTargetPoseLandmarkLines(); // draw target pose landmarks on canvas
         // start saving data to array
@@ -123,7 +143,7 @@ function onResults(results) {
             saveDataToArray = false;
         }
         ///// testing /////
-        saveCameraImage(results.image, angleDifferenceScore);
+        // updateHighScoreData(results.image, angleDifferenceScore);
         // bestPoseCanvasCtx.drawImage(results.image, 0, 0, 320, 180);
     }
     // ------ end of actions to preform when there are results
@@ -162,9 +182,9 @@ function captureImage() {
     image.src = canvasElement.toDataURL("image/png");
     image.width = canvasElement.width;
     image.height = canvasElement.height;
-    let imageName = "image" + currentPoseInThisWorkout + ".png";
-    image.download = imageName;
-    image.click();
+    // let imageName = "image" + currentPoseInThisWorkout + ".png";
+    // image.download = imageName;
+    // image.click();
 }
 
 // take in landmarks and convert to 2D array [x,y,z,visibility]
@@ -202,48 +222,13 @@ function setYogaRoutine(workout, poseTotal) {
     return thisWorkout;
 }
 
-// draw circles on landmarks. Input is landmarks array [x,y,z,visibility]
-function drawLandmarkCircles(landmarks) {
-    for (let i = 0; i < landmarks.length; i++) {
-        const landmark = landmarks[i];
-        const x = landmark[0] * canvasElement.width;
-        const y = landmark[1] * canvasElement.height;
-        let circleDiameter = 10;
-        if (i == 0) {
-            canvasCtx.fillStyle = 'lightgreen';
-            canvasCtx.strokeStyle = 'green';
-            // get the distance between points in 2d space
-            let distance = Math.sqrt(Math.pow(landmarks[11][0] - landmarks[12][0], 2) + Math.pow(landmarks[11][1] - landmarks[12][1], 2));
-            distance = parseInt(distance * canvasElement.width / 3.5);
-            console.log("distance: ", distance);
-            circleDiameter = distance;
-        }
-        else if (i < 11) {
-            // change circleDiameter to draw facial landmarks
-            canvasCtx.fillStyle = 'lightblue';
-            canvasCtx.strokeStyle = 'blue';
-            circleDiameter = 0;
-        }
-        else if (i % 2 == 0) {
-            canvasCtx.fillStyle = 'orange';
-            canvasCtx.strokeStyle = 'red';
-            circleDiameter = 15;
-        }
-        else {
-            canvasCtx.fillStyle = 'lightgreen';
-            canvasCtx.strokeStyle = 'green';
-            circleDiameter = 15;
-        }
-        canvasCtx.linewidth = 10;
-        canvasCtx.beginPath();
-        canvasCtx.arc(x, y, circleDiameter, 0, 2 * Math.PI);
-        canvasCtx.closePath();
-        canvasCtx.fill();
-        canvasCtx.stroke();
-    }
-}
-// draw lines between landmarks
+
+// draw lines between landmarks and circles on landmark locations
 function drawLandmarkLines(landmarks) {
+    // normalize the landmarks from 0-1  
+    if (fitUserLandmarksToCanvas) {
+
+    }
     // connections to draw based on Blazepose model card
     let connections = [[11, 13], [13, 15], [15, 19], [12, 14], [14, 16], [16, 20], [12, 11], [12, 24], [11, 23], [23, 24], [23, 25], [24, 26], [26, 28], [25, 27], [27, 31], [28, 32]];
     connections.forEach(function (item, index) {
@@ -283,7 +268,89 @@ function drawLandmarkLines(landmarks) {
         canvasCtx.lineTo(xFinish, yFinish);
         canvasCtx.stroke();
     });
+    if (displayLandmarkCircles) {
+        for (let i = 0; i < landmarks.length; i++) {
+            const landmark = landmarks[i];
+            const x = landmark[0] * canvasElement.width;
+            const y = landmark[1] * canvasElement.height;
+            let circleDiameter = 10;
+            if (i == 0) {
+                canvasCtx.fillStyle = 'lightgreen';
+                canvasCtx.strokeStyle = 'green';
+                // get the distance between points in 2d space
+                let distance = Math.sqrt(Math.pow(landmarks[11][0] - landmarks[12][0], 2) + Math.pow(landmarks[11][1] - landmarks[12][1], 2));
+                distance = parseInt(distance * canvasElement.width / 3.5);
+                circleDiameter = distance;
+                // draw the countdown timer on the head circle
+                timerXLocation = (1-(x / canvasElement.width)) * 95;
+                timerYLocation = y / canvasElement.height * 90;
+                document.getElementById("timer").style.top = timerYLocation + "%";
+                document.getElementById("timer").style.left = timerXLocation + "%";
+
+            }
+            else if (i < 11) {
+                // change circleDiameter to draw facial landmarks
+                canvasCtx.fillStyle = 'lightblue';
+                canvasCtx.strokeStyle = 'blue';
+                circleDiameter = 0;
+            }
+            else if (i % 2 == 0) {
+                canvasCtx.fillStyle = 'orange';
+                canvasCtx.strokeStyle = 'red';
+                circleDiameter = 15;
+            }
+            else {
+                canvasCtx.fillStyle = 'lightgreen';
+                canvasCtx.strokeStyle = 'green';
+                circleDiameter = 15;
+            }
+            canvasCtx.linewidth = 10;
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, circleDiameter, 0, 2 * Math.PI);
+            canvasCtx.closePath();
+            canvasCtx.fill();
+            canvasCtx.stroke();
+        }
+    }
 }
+
+// normalize landmarks from 0-1
+function normalizeLandmarks(landmarks) {
+    let normalizedLandmarks = [];
+    let xMin = 100;
+    let xMax = 0;
+    let yMin = 100;
+    let yMax = 0;
+    let zMin = 100;
+    let zMax = 0;
+
+    for (let i = 0; i < landmarks.length; i++) {
+        if (landmarks[i][0] < xMin) {
+            xMin = landmarks[i][0];
+        }
+        if (landmarks[i][0] > xMax) {
+            xMax = landmarks[i][0];
+        }
+        if (landmarks[i][1] < yMin) {
+            yMin = landmarks[i][1];
+        }
+        if (landmarks[i][1] > yMax) {
+            yMax = landmarks[i][1];
+        }
+        if (landmarks[i][2] < zMin) {
+            zMin = landmarks[i][2];
+        }
+        if (landmarks[i][2] > zMax) {
+            zMax = landmarks[i][2];
+        }
+    }
+    for (let i = 0; i < landmarks.length; i++) {
+        normalizedLandmarks.push([(landmarks[i][0] - xMin) / (xMax - xMin), (landmarks[i][1] - yMin) / (yMax - yMin), (landmarks[i][2] - zMin) / (zMax - zMin)]);
+    }
+
+    return normalizedLandmarks;
+}
+
 
 // draw the target yoga pose on the canvas
 function drawTargetPoseLandmarkLines() {
@@ -354,6 +421,8 @@ function drawTargetPoseLandmarkLines() {
         targetPoseCanvasCtx.stroke();
     });
 }
+
+// draw the normalized user landmark lines and circles to the canvas so all of the landmarks are displayed
 
 
 
@@ -705,37 +774,33 @@ function startWorkout(timePerPose) {
     document.getElementById("poseCount").style.visibility = "visible";
     document.getElementById("score").style.visibility = "visible";
     document.getElementById("timer").style.visibility = "visible";
+    document.getElementById("bestPose").style.visibility = "visible";
     createTimer(timePerPose);
 }
-
-function saveCameraImage(image, currentScore) {
-    console.log("This pose score: ", currentScore);
-    console.log("High score: ", thisPoseHighScore);
+// update the highscore image and number
+function updateHighScoreData(currentScore) {
     // save the camera image to a file
     if (currentScore >= thisPoseHighScore) {
-        var dataURL = bestPoseCanvasElement.toDataURL('image/png');
-        var link = document.createElement('a');
-        link.href = dataURL;
-        link.download = 'image.png';
-        link.click();
-        bestPoseCanvasCtx.drawImage(image, 0, 0, 320, 180);
-        console.log("image saved");
+        thisPoseHighScore = currentScore;
+        let text = "High score: " + currentScore;
+        document.getElementById("highscore").innerHTML = text
+        bestPoseCanvasCtx.drawImage(currentInputImage, 0, 0, 320, 180);
     }
 
 }
-//     console.log("image: ", video);
-//     canvasCtx.drawImage(video, 600, 600, canvasCtx.width, canvasCtx.height); // Or at whatever offset you like
-// }
 
 // update the position and number for score on the score DOM element
 // take in the current score and landmarks array
 function updateScore(score) {
     nonReversedCanvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); // clear canvas for score arc
-
     higherBetterScore = 1500 - score;
     score = parseInt((higherBetterScore / 1500) * 100); //normailze score to a percentage
     currentScore = score;
     document.getElementById('score').innerHTML = score + "%";
+
+    // update the highscore image and number
+    updateHighScoreData(score);
+
     // use below code to draw an arc on the nonreversed canvas
     let startPosition = (1 * Math.PI);
     let endPosition = (startPosition + ((score / 100) * (Math.PI)));
@@ -747,11 +812,11 @@ function updateScore(score) {
     let xPosition = parseInt((1 - currentLandmarksArray[0][0]) * canvasElement.width);
     let yPosition = parseInt(currentLandmarksArray[0][1] * canvasElement.height - 50);
 
-    nonReversedCanvasCtx.beginPath();
-    nonReversedCanvasCtx.arc(xPosition, yPosition, 100, startPosition, endPosition);
-    nonReversedCanvasCtx.lineWidth = 15;
-    nonReversedCanvasCtx.strokeStyle = "lightgreen";
-    nonReversedCanvasCtx.stroke();
+    // nonReversedCanvasCtx.beginPath();
+    // nonReversedCanvasCtx.arc(xPosition, yPosition, 100, startPosition, endPosition);
+    // nonReversedCanvasCtx.lineWidth = 15;
+    // nonReversedCanvasCtx.strokeStyle = "lightgreen";
+    // nonReversedCanvasCtx.stroke();
 
     // use below code to draw the score to above the users head
     // scoreBoard.style.top = (landmarks[0][1] * 40) + '%';
@@ -855,6 +920,7 @@ function createTimer(time) {
                 clearInterval(timer);
                 console.log("workout complete");
                 console.log("all workout data", allWorkoutData);
+                postWorkoutData(allWorkoutData);
             }
             else {
                 time = startTime;
@@ -885,5 +951,9 @@ function dataToSave() {
     allWorkoutData.push(workout);
 }
 
-
+/// this fuction will call when workout is complete
+function postWorkoutData(data){
+    console.log("workout complete and data is posting")
+    return;
+}
 

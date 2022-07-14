@@ -266,8 +266,6 @@ def getImageLandmarks():
             theseAngles = CalculateAllAngles(anglesArray)
 
 
-
-
             thisPoseInfo = {"PoseNumber": i, "Name": names[i],"RelativeLocation": relativeLocation[i], "Location": imageLinks[i], "Angles": theseAngles, "Landmarks": landmarkArray}
             jsonData.append(thisPoseInfo)
             print(thisPoseInfo)

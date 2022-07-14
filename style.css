@@ -43,6 +43,7 @@ body {
   transform: rotateY(180deg);
   -webkit-transform: rotateY(180deg); /* Safari and Chrome */
   -moz-transform: rotateY(180deg); /* Firefox */
+  visibility: hidden;
 }
 
 #poseCanvas1 {
@@ -100,13 +101,27 @@ body {
   left: 90%;
   top: 0%;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 100px;
+  font-size: 110px;
   font-weight: bold;
-  color: rgb(13, 202, 0);
+  color: rgb(3, 0, 202);
   text-align: center;
   -webkit-text-stroke-width: 3px;
   -webkit-text-stroke-color: rgb(255, 255, 255);
   visibility: hidden;
+}
+
+#highscore {
+  position: absolute;
+  left: 75%;
+  top: 33%;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 30px;
+  font-weight: bold;
+  color: rgb(13, 202, 0);
+  text-align: center;
+  -webkit-text-stroke-width: 1px;
+  -webkit-text-stroke-color: rgb(0, 0, 0);
+  visibility: visible;
 }
 
 #score {
